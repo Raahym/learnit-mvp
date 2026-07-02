@@ -19,12 +19,17 @@ import {
   Sparkles,
   Target,
   UploadCloud,
+  UserCircle,
   Zap
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
+import { getSupabaseBrowserClient, hasSupabaseBrowserConfig } from "@/lib/supabase-browser";
 
 type AppTab = "command" | "library" | "flashcards" | "quiz" | "plan";
 type Session = { id: string; topic: string; gain: number; createdAt: string };
+type QuizAttempt = { id: string; selectedAnswer: string; isCorrect: boolean; createdAt: string };
+type AuthMode = "login" | "signup";
 
 const subjects = [
   { name: "Physics", readiness: 72, exam: "11 days", risk: "Newton's Laws", color: "teal" },
@@ -78,25 +83,22 @@ export default function Home() {
   const [waitlistMessage, setWaitlistMessage] = useState("");
   const [sessionResult, setSessionResult] = useState("Ready to analyze your next study session.");
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
   const [revealedCard, setRevealedCard] = useState(0);
   const [quizChoice, setQuizChoice] = useState("");
   const [analysisState, setAnalysisState] = useState("Idle");
   const [supabaseState, setSupabaseState] = useState("Checking...");
+  const [authMode, setAuthMode] = useState<AuthMode>("signup");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
 
   const readiness = useMemo(() => {
     const bonus = sessions.reduce((sum, session) => sum + session.gain, 0);
     return Math.min(94, 72 + bonus);
-  }, [sessions]);
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem("learnit.sessions");
-    if (stored) {
-      setSessions(JSON.parse(stored));
-    }
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem("learnit.sessions", JSON.stringify(sessions));
   }, [sessions]);
 
   useEffect(() => {
@@ -105,6 +107,105 @@ export default function Home() {
       .then((data) => setSupabaseState(data.supabase === "connected" ? "Connected" : "Awaiting keys"))
       .catch(() => setSupabaseState("Check failed"));
   }, []);
+
+  useEffect(() => {
+    if (!supabase) {
+      setIsAuthReady(true);
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
+      setIsAuthReady(true);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!user) {
+      setSessions([]);
+      setQuizAttempts([]);
+      return;
+    }
+
+    loadSavedWorkspace();
+  }, [user]);
+
+  async function getAccessToken() {
+    if (!supabase) {
+      return null;
+    }
+
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+  }
+
+  async function loadSavedWorkspace() {
+    const token = await getAccessToken();
+    if (!token) {
+      return;
+    }
+
+    const headers = { Authorization: `Bearer ${token}` };
+    const [sessionResponse, attemptResponse] = await Promise.all([
+      fetch("/api/study-session", { headers }),
+      fetch("/api/quiz-attempt", { headers })
+    ]);
+
+    if (sessionResponse.ok) {
+      const data = await sessionResponse.json();
+      setSessions((data.sessions ?? []).map((session: any) => ({
+        id: session.id,
+        topic: session.topic,
+        gain: Number(session.readiness_gain ?? 0),
+        createdAt: new Date(session.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      })));
+    }
+
+    if (attemptResponse.ok) {
+      const data = await attemptResponse.json();
+      setQuizAttempts((data.attempts ?? []).map((attempt: any) => ({
+        id: attempt.id,
+        selectedAnswer: attempt.selected_answer,
+        isCorrect: Boolean(attempt.is_correct),
+        createdAt: new Date(attempt.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      })));
+    }
+  }
+
+  async function handleAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthMessage(authMode === "signup" ? "Creating account..." : "Signing in...");
+
+    if (!supabase || !hasSupabaseBrowserConfig()) {
+      setAuthMessage("Supabase public env vars are missing. Add them to enable real auth.");
+      return;
+    }
+
+    const request = authMode === "signup"
+      ? supabase.auth.signUp({ email: authEmail, password: authPassword })
+      : supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+    const { data, error } = await request;
+
+    if (error) {
+      setAuthMessage(error.message);
+      return;
+    }
+
+    setUser(data.user ?? null);
+    setAuthMessage(authMode === "signup" ? "Account created. Check email confirmation settings if login is blocked." : "Signed in.");
+  }
+
+  async function logout() {
+    await supabase?.auth.signOut();
+    setUser(null);
+    setAuthMessage("Signed out.");
+  }
 
   async function joinWaitlist(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -122,10 +223,14 @@ export default function Home() {
 
   async function logSession(topic = "Newton's Laws") {
     setSessionResult("Analyzing session...");
+    const token = await getAccessToken();
 
     const response = await fetch("/api/study-session", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
       body: JSON.stringify({ subject: "Physics", topic, confidence: 3, minutes: 35 })
     });
 
@@ -143,6 +248,35 @@ export default function Home() {
     setSessionResult(`+${gain}% readiness. ${data.recommendation}`);
   }
 
+  async function chooseQuizAnswer(option: string) {
+    setQuizChoice(option);
+    const token = await getAccessToken();
+
+    const response = await fetch("/api/quiz-attempt", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({
+        subject: "Physics",
+        topic: "Newton's Laws",
+        question: quiz.question,
+        selectedAnswer: option,
+        correctAnswer: quiz.answer,
+        confidence: 3
+      })
+    });
+
+    const data = await response.json();
+    if (data.ok) {
+      setQuizAttempts((current) => [
+        { id: crypto.randomUUID(), selectedAnswer: option, isCorrect: option === quiz.answer, createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) },
+        ...current
+      ].slice(0, 8));
+    }
+  }
+
   function analyzeUpload() {
     setAnalysisState("Extracting concepts...");
     window.setTimeout(() => setAnalysisState("18 concepts indexed, 3 weak-topic links created"), 650);
@@ -157,7 +291,7 @@ export default function Home() {
           <a href="#engine">Engine</a>
           <a href="#pricing">Pricing</a>
         </div>
-        <a className="navAction" href="#join">Create account</a>
+        <a className="navAction" href="#join">{user ? "Account" : "Create account"}</a>
       </nav>
 
       <section className="hero">
@@ -194,7 +328,7 @@ export default function Home() {
             <div><small>Predicted grade</small><strong>B+</strong></div>
             <div><small>Priority</small><strong>Newton's Laws</strong></div>
             <div><small>Next action</small><strong>12 questions</strong></div>
-            <div><small>Sessions saved</small><strong>{sessions.length}</strong></div>
+            <div><small>Cloud sessions</small><strong>{sessions.length}</strong></div>
           </div>
         </section>
       </section>
@@ -214,7 +348,7 @@ export default function Home() {
         <aside className="sidebar">
           <div className="studentCard">
             <GraduationCap size={26} />
-            <div><strong>Ayan's Semester</strong><span>3 active subjects / 1 urgent exam</span></div>
+            <div><strong>{user ? "Your Semester" : "Demo Semester"}</strong><span>{user?.email ?? "Sign in to save progress"}</span></div>
           </div>
           {[
             ["command", "Command center"],
@@ -241,7 +375,7 @@ export default function Home() {
                 <small>{subject.exam} / weak: {subject.risk}</small>
               </article>
             ))}
-            <article className="metric"><span>Sessions saved</span><strong>{sessions.length}</strong><small>Stored on this device today</small></article>
+            <article className="metric"><span>Saved sessions</span><strong>{sessions.length}</strong><small>{user ? "Stored in Supabase" : "Sign in to enable cloud save"}</small></article>
           </div>
 
           {tab === "command" && (
@@ -295,11 +429,15 @@ export default function Home() {
               <h3>{quiz.question}</h3>
               <div className="optionGrid">
                 {quiz.options.map((option) => (
-                  <button className={quizChoice === option ? "quizOption selected" : "quizOption"} key={option} onClick={() => setQuizChoice(option)}>{option}</button>
+                  <button className={quizChoice === option ? "quizOption selected" : "quizOption"} key={option} onClick={() => chooseQuizAnswer(option)}>{option}</button>
                 ))}
               </div>
               <div className="sessionResult">
                 {quizChoice ? (quizChoice === quiz.answer ? "Correct. Force = mass x acceleration = 2 x 3 = 6 N." : "Not quite. Use F = ma, so 2 x 3 = 6 N.") : "Choose an answer to get feedback."}
+              </div>
+              <div className="attemptStrip">
+                <strong>{quizAttempts.length}</strong>
+                <span>{user ? "quiz attempts saved to your workspace" : "quiz attempts ready for cloud save after login"}</span>
               </div>
             </div>
           )}
@@ -339,13 +477,38 @@ export default function Home() {
       </section>
 
       <section className="join" id="join">
-        <div><p className="eyebrow">Account setup</p><h2>Once Supabase is connected, this form becomes the real signup capture.</h2></div>
-        <form onSubmit={joinWaitlist}>
-          <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="student@email.com" />
-          <input value={examGoal} onChange={(event) => setExamGoal(event.target.value)} placeholder="Exam goal" />
-          <button type="submit">Create workspace</button>
-          <p>{waitlistMessage || "Vercel is live. Supabase needs project keys before cloud persistence turns on."}</p>
-        </form>
+        <div>
+          <p className="eyebrow"><UserCircle size={14} /> Account setup</p>
+          <h2>{user ? "Your LearnIt workspace is connected." : "Create a real LearnIt account."}</h2>
+          <p>{isAuthReady ? "Supabase auth is loaded in the browser and API routes save progress against your user id." : "Checking auth session..."}</p>
+        </div>
+        <div className="accountGrid">
+          {user ? (
+            <div className="accountPanel">
+              <strong>{user.email}</strong>
+              <span>Saved sessions: {sessions.length} / Quiz attempts: {quizAttempts.length}</span>
+              <button type="button" onClick={logout}>Log out</button>
+            </div>
+          ) : (
+            <form onSubmit={handleAuth}>
+              <div className="authToggle">
+                <button type="button" className={authMode === "signup" ? "active" : ""} onClick={() => setAuthMode("signup")}>Sign up</button>
+                <button type="button" className={authMode === "login" ? "active" : ""} onClick={() => setAuthMode("login")}>Login</button>
+              </div>
+              <input value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="student@email.com" type="email" />
+              <input value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="Password" type="password" minLength={6} />
+              <button type="submit">{authMode === "signup" ? "Create account" : "Login"}</button>
+              <p>{authMessage || "Use your Supabase Auth project to create a persisted student workspace."}</p>
+            </form>
+          )}
+
+          <form onSubmit={joinWaitlist}>
+            <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="student@email.com" />
+            <input value={examGoal} onChange={(event) => setExamGoal(event.target.value)} placeholder="Exam goal" />
+            <button type="submit">Save beta request</button>
+            <p>{waitlistMessage || "Optional: capture early-access demand separately from app login."}</p>
+          </form>
+        </div>
       </section>
     </main>
   );
