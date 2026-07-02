@@ -62,6 +62,10 @@ create table if not exists study_materials (
   created_at timestamptz not null default now()
 );
 
+insert into storage.buckets (id, name, public)
+values ('study-materials', 'study-materials', false)
+on conflict (id) do nothing;
+
 create table if not exists flashcards (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users(id) on delete cascade,

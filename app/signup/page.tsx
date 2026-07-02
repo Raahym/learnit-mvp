@@ -30,7 +30,8 @@ export default function SignupPage() {
     setIsSubmitting(true);
     setMessage("Creating account...");
 
-    const redirectTo = `${window.location.origin}/auth/callback`;
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+    const redirectTo = `${siteUrl.replace(/\/$/, "")}/auth/callback`;
     const { data, error } = await supabase.auth.signUp({
       email,
       password,

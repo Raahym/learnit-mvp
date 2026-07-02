@@ -470,6 +470,23 @@ h1 {
   cursor: pointer;
 }
 
+.uploadButton {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(40, 214, 189, 0.4);
+  border-radius: 8px;
+  padding: 0 14px;
+  color: var(--teal);
+  background: rgba(40, 214, 189, 0.08);
+  cursor: pointer;
+}
+
+.uploadButton input {
+  display: none;
+}
+
 .coachPanel {
   display: grid;
   align-content: center;
@@ -698,6 +715,27 @@ h1 {
   background: rgba(40, 214, 189, 0.08);
 }
 
+.sessionLogger,
+.aiActions {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 120px 150px auto;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.aiActions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.aiActions button {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+}
+
 .attemptStrip {
   display: flex;
   align-items: center;
@@ -823,6 +861,15 @@ input {
   background: rgba(0, 0, 0, 0.24);
 }
 
+select {
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.24);
+}
+
 @media (max-width: 980px) {
   .hero,
   .appShell,
@@ -834,6 +881,7 @@ input {
   .workflow,
   .metrics,
   .commandRow,
+  .sessionLogger,
   .accountGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -858,6 +906,8 @@ input {
   .dashGrid,
   .engineGrid,
   .pricing,
+  .sessionLogger,
+  .aiActions,
   .accountGrid,
   .panelGrid {
     grid-template-columns: 1fr;

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin, getUserIdFromRequest, hasSupabaseServerConfig } from "@/lib/supabase";
+import { updateSubjectReadiness } from "@/lib/study-progress";
 
 export async function GET(request: Request) {
   if (!hasSupabaseServerConfig()) {
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
   const topic = String(body?.topic ?? "").trim();
   const confidence = Number(body?.confidence ?? 3);
   const minutes = Number(body?.minutes ?? 25);
+  const weakTopic = body?.weakTopic ? String(body.weakTopic).trim() : "";
 
   if (!subject || !topic) {
     return NextResponse.json({ error: "Subject and topic are required." }, { status: 400 });
@@ -70,10 +72,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const readiness = await updateSubjectReadiness(supabase!, userId, subject, readinessGain, weakTopic || topic);
+
   return NextResponse.json({
     ok: true,
     mode: "supabase",
     readinessGain,
+    readiness,
     recommendation: `Review ${topic} again tomorrow, then take a mixed ${subject} quiz.`
   });
 }

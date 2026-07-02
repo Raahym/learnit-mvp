@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin, getUserIdFromRequest, hasSupabaseServerConfig } from "@/lib/supabase";
+import { updateSubjectReadiness } from "@/lib/study-progress";
 
 export async function GET(request: Request) {
   if (!hasSupabaseServerConfig()) {
@@ -71,5 +72,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, mode: "supabase", isCorrect });
+  const readinessDelta = isCorrect ? 2 : -3;
+  const readiness = await updateSubjectReadiness(
+    supabase!,
+    userId,
+    subject,
+    readinessDelta,
+    isCorrect ? undefined : topic
+  );
+
+  return NextResponse.json({ ok: true, mode: "supabase", isCorrect, readinessDelta, readiness });
 }

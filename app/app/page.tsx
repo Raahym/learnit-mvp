@@ -12,12 +12,21 @@ import {
   UploadCloud,
   Zap
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/useAuth";
 
 type AppTab = "command" | "library" | "flashcards" | "quiz" | "plan";
 type Session = { id: string; topic: string; gain: number; createdAt: string };
 type QuizAttempt = { id: string; selectedAnswer: string; isCorrect: boolean; createdAt: string };
+type Material = {
+  id: string;
+  title: string;
+  material_type: string;
+  subject: string | null;
+  status: string;
+  concept_count: number;
+  created_at: string;
+};
 type Subject = {
   id: string;
   name: string;
@@ -28,13 +37,6 @@ type Subject = {
   readiness: number;
   weak_topic: string | null;
 };
-
-const libraryItems = [
-  { name: "Mechanics Chapter 4.pdf", type: "Notes", status: "Indexed", concepts: 18 },
-  { name: "Physics 2024 Paper 2.pdf", type: "Past paper", status: "Mapped", concepts: 12 },
-  { name: "Mark Scheme Forces.docx", type: "Mark scheme", status: "Linked", concepts: 9 },
-  { name: "Kinematics Lecture Slides.pptx", type: "Slides", status: "Ready", concepts: 21 }
-];
 
 const plan = [
   { time: "08:00", task: "Review flashcards", detail: "Highest-retention-risk cards due before today's session" },
@@ -69,11 +71,17 @@ export default function Dashboard() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
+  const [materials, setMaterials] = useState<Material[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [sessionResult, setSessionResult] = useState("Ready to analyze your next study session.");
   const [revealedCard, setRevealedCard] = useState(0);
   const [quizChoice, setQuizChoice] = useState("");
   const [analysisState, setAnalysisState] = useState("Idle");
+  const [sessionTopic, setSessionTopic] = useState("");
+  const [sessionMinutes, setSessionMinutes] = useState("35");
+  const [sessionConfidence, setSessionConfidence] = useState("3");
+  const [uploadMessage, setUploadMessage] = useState("");
+  const [aiMessage, setAiMessage] = useState("AI engine ready.");
 
   useEffect(() => {
     loadWorkspace();
@@ -83,10 +91,11 @@ export default function Dashboard() {
   async function loadWorkspace() {
     setIsLoadingData(true);
 
-    const [subjectsResponse, sessionsResponse, attemptsResponse] = await Promise.all([
+    const [subjectsResponse, sessionsResponse, attemptsResponse, materialsResponse] = await Promise.all([
       authorizedFetch("/api/subjects"),
       authorizedFetch("/api/study-session"),
-      authorizedFetch("/api/quiz-attempt")
+      authorizedFetch("/api/quiz-attempt"),
+      authorizedFetch("/api/materials")
     ]);
 
     if (subjectsResponse.ok) {
@@ -112,6 +121,11 @@ export default function Dashboard() {
         isCorrect: Boolean(attempt.is_correct),
         createdAt: new Date(attempt.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       })));
+    }
+
+    if (materialsResponse.ok) {
+      const data = await materialsResponse.json();
+      setMaterials(data.materials ?? []);
     }
 
     setIsLoadingData(false);
@@ -140,13 +154,15 @@ export default function Dashboard() {
 
   const primarySubject = subjects[0]?.name ?? "General";
 
-  async function logSession(topic = weakTopics[0]?.name ?? "General review") {
+  async function logSession(topic = sessionTopic || weakTopics[0]?.name || "General review") {
     setSessionResult("Analyzing session...");
+    const minutes = Number(sessionMinutes || 35);
+    const confidence = Number(sessionConfidence || 3);
 
     const response = await authorizedFetch("/api/study-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subject: primarySubject, topic, confidence: 3, minutes: 35 })
+      body: JSON.stringify({ subject: primarySubject, topic, confidence, minutes, weakTopic: weakTopics[0]?.name })
     });
 
     const data = await response.json();
@@ -160,6 +176,9 @@ export default function Dashboard() {
       { id: crypto.randomUUID(), topic, gain, createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) },
       ...current
     ].slice(0, 5));
+    if (data.readiness !== null && data.readiness !== undefined) {
+      setSubjects((current) => current.map((subject) => subject.name === primarySubject ? { ...subject, readiness: Number(data.readiness) } : subject));
+    }
     setSessionResult(`+${gain}% readiness. ${data.recommendation}`);
   }
 
@@ -185,12 +204,62 @@ export default function Dashboard() {
         { id: crypto.randomUUID(), selectedAnswer: option, isCorrect: option === quiz.answer, createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) },
         ...current
       ].slice(0, 8));
+      if (data.readiness !== null && data.readiness !== undefined) {
+        setSubjects((current) => current.map((subject) => subject.name === primarySubject ? { ...subject, readiness: Number(data.readiness), weak_topic: option === quiz.answer ? subject.weak_topic : weakTopics[0]?.name ?? "General review" } : subject));
+      }
     }
   }
 
-  function analyzeUpload() {
-    setAnalysisState("Extracting concepts...");
-    window.setTimeout(() => setAnalysisState("18 concepts indexed, 3 weak-topic links created"), 650);
+  async function uploadMaterial(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadMessage("Uploading material...");
+    const form = new FormData();
+    form.append("file", file);
+    form.append("subject", primarySubject);
+    form.append("materialType", file.type.includes("pdf") ? "pdf" : "notes");
+
+    const response = await authorizedFetch("/api/materials", {
+      method: "POST",
+      body: form
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      setUploadMessage(data.error ?? "Upload failed.");
+      return;
+    }
+
+    setMaterials((current) => [data.material, ...current]);
+    setUploadMessage(`${file.name} uploaded and queued for indexing.`);
+    event.target.value = "";
+  }
+
+  async function runAi(kind: "flashcards" | "quiz" | "explain" | "study-plan") {
+    setAiMessage(`Generating ${kind.replace("-", " ")}...`);
+    const response = await authorizedFetch(`/api/ai/${kind}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        subject: primarySubject,
+        topic: weakTopics[0]?.name ?? sessionTopic ?? "General review",
+        question: quiz.question,
+        selectedAnswer: quizChoice || "No answer selected",
+        correctAnswer: quiz.answer,
+        examDate: subjects[0]?.exam_date,
+        weeklyHours: subjects[0]?.weekly_hours,
+        count: 5
+      })
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      setAiMessage(data.error ?? "AI route failed.");
+      return;
+    }
+
+    setAiMessage(`${kind.replace("-", " ")} generated as structured JSON.`);
   }
 
   return (
@@ -262,9 +331,12 @@ export default function Dashboard() {
                 <UploadCloud size={28} />
                 <div>
                   <strong>Content intake</strong>
-                  <span>Mechanics Chapter 4.pdf ready for analysis</span>
+                  <span>{materials.length} uploaded materials in this workspace</span>
                 </div>
-                <button type="button" onClick={analyzeUpload}>Analyze</button>
+                <label className="uploadButton">
+                  Upload
+                  <input type="file" accept=".pdf,.doc,.docx,.txt,.md,.ppt,.pptx" onChange={uploadMaterial} />
+                </label>
               </article>
               <article className="coachPanel">
                 <span>AI Coach</span>
@@ -281,16 +353,41 @@ export default function Dashboard() {
               <SearchPanel />
               <PastPaperPanel />
             </div>
-            <div className="sessionResult">{analysisState} / {sessionResult}</div>
+            <div className="sessionLogger">
+              <input value={sessionTopic} onChange={(event) => setSessionTopic(event.target.value)} placeholder="Topic studied, e.g. Newton's Laws" />
+              <input value={sessionMinutes} onChange={(event) => setSessionMinutes(event.target.value)} type="number" min={1} placeholder="Minutes" />
+              <select value={sessionConfidence} onChange={(event) => setSessionConfidence(event.target.value)}>
+                <option value="1">Confidence 1</option>
+                <option value="2">Confidence 2</option>
+                <option value="3">Confidence 3</option>
+                <option value="4">Confidence 4</option>
+                <option value="5">Confidence 5</option>
+              </select>
+              <button type="button" className="primaryButton" onClick={() => logSession()}>
+                <Zap size={16} /> Save session
+              </button>
+            </div>
+            <div className="sessionResult">{analysisState} / {sessionResult} / {uploadMessage || aiMessage}</div>
+            <div className="aiActions">
+              <button type="button" onClick={() => runAi("flashcards")}>Generate flashcards</button>
+              <button type="button" onClick={() => runAi("quiz")}>Generate quiz</button>
+              <button type="button" onClick={() => runAi("study-plan")}>Generate study plan</button>
+            </div>
           </>
         )}
 
         {tab === "library" && (
           <div className="tablePanel">
-            {libraryItems.map((item) => (
-              <div className="libraryRow" key={item.name}>
+            {materials.length === 0 ? (
+              <div className="libraryRow">
                 <FileText size={18} />
-                <div><strong>{item.name}</strong><span>{item.type} / {item.concepts} concepts</span></div>
+                <div><strong>No materials uploaded yet</strong><span>Upload PDFs, notes, or slides from the command center.</span></div>
+                <b>Empty</b>
+              </div>
+            ) : materials.map((item) => (
+              <div className="libraryRow" key={item.id}>
+                <FileText size={18} />
+                <div><strong>{item.title}</strong><span>{item.material_type} / {item.concept_count} concepts / {item.subject ?? "General"}</span></div>
                 <b>{item.status}</b>
               </div>
             ))}
@@ -323,6 +420,11 @@ export default function Dashboard() {
             <div className="sessionResult">
               {quizChoice ? (quizChoice === quiz.answer ? "Correct. Force = mass x acceleration = 2 x 3 = 6 N." : "Not quite. Use F = ma, so 2 x 3 = 6 N.") : "Choose an answer to get feedback."}
             </div>
+            {quizChoice && (
+              <button type="button" className="secondaryButton" onClick={() => runAi("explain")}>
+                Explain this answer
+              </button>
+            )}
             <div className="attemptStrip">
               <strong>{quizAttempts.length}</strong>
               <span>quiz attempts saved to your workspace</span>

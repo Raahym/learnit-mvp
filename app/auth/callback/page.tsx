@@ -5,28 +5,64 @@ import { useRouter } from "next/navigation";
 import { GraduationCap } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
-function getHashParams() {
+function getAuthParams() {
   if (typeof window === "undefined") {
     return new URLSearchParams();
   }
 
-  return new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const params = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  hashParams.forEach((value, key) => {
+    if (!params.has(key)) {
+      params.set(key, value);
+    }
+  });
+
+  return params;
 }
 
 export default function AuthCallbackPage() {
   const router = useRouter();
   const [message, setMessage] = useState("Confirming your email...");
-  const hashParams = useMemo(getHashParams, []);
+  const authParams = useMemo(getAuthParams, []);
 
   useEffect(() => {
-    const errorDescription = hashParams.get("error_description");
+    const errorDescription = authParams.get("error_description");
     if (errorDescription) {
       setMessage(errorDescription.replace(/\+/g, " "));
       return;
     }
 
     const supabase = getSupabaseBrowserClient();
-    supabase?.auth.getSession().then(({ data }) => {
+    if (!supabase) {
+      setMessage("Supabase auth is not configured for this deployment.");
+      return;
+    }
+
+    const code = authParams.get("code");
+    if (code) {
+      supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
+        if (error) {
+          setMessage(error.message);
+          return;
+        }
+
+        if (data.session) {
+          router.replace("/app/onboarding");
+          return;
+        }
+
+        setMessage("Email confirmed. Log in to open your LearnIt workspace.");
+      });
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+
       if (data.session) {
         router.replace("/app/onboarding");
         return;
@@ -34,7 +70,7 @@ export default function AuthCallbackPage() {
 
       setMessage("Email confirmed. Log in to open your LearnIt workspace.");
     });
-  }, [hashParams, router]);
+  }, [authParams, router]);
 
   return (
     <main className="authPage">
