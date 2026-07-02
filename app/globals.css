@@ -884,3 +884,172 @@ input {
     flex-direction: column;
   }
 }
+
+/* ── Auth pages, protected app shell, onboarding ── */
+
+.navActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.authPage {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px clamp(20px, 5vw, 72px);
+}
+
+.authCard {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 32px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.authIntro {
+  display: grid;
+  gap: 6px;
+}
+
+.authIntro svg {
+  color: var(--teal);
+  margin-bottom: 6px;
+}
+
+.authIntro h1 {
+  font-size: 24px;
+}
+
+.authIntro p {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.authSwitch {
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.authSwitch a {
+  color: var(--teal);
+  font-weight: 700;
+}
+
+.formError {
+  color: var(--red);
+  font-size: 13px;
+}
+
+.loadingScreen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.loadingScreen svg {
+  color: var(--teal);
+  justify-self: center;
+}
+
+.appWrap {
+  min-height: 100vh;
+}
+
+.accountMenu {
+  position: relative;
+}
+
+.accountMenuDropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  gap: 10px;
+  min-width: 220px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  z-index: 30;
+}
+
+.accountMenuDropdown span {
+  color: var(--muted);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.onboardingWrap {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 48px clamp(20px, 5vw, 72px) 80px;
+  display: grid;
+  gap: 28px;
+}
+
+.onboardingIntro h1 {
+  font-size: 30px;
+  margin: 8px 0;
+}
+
+.onboardingForm {
+  display: grid;
+  gap: 20px;
+}
+
+.onboardingRow {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  gap: 14px;
+}
+
+.onboardingRowHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.onboardingGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.onboardingGrid label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.onboardingGrid select {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 14px;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.24);
+}
+
+@media (max-width: 680px) {
+  .onboardingGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .navActions {
+    gap: 6px;
+  }
+}

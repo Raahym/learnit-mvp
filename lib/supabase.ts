@@ -38,7 +38,7 @@ export function getSupabaseAuthClient() {
   });
 }
 
-export async function getUserIdFromRequest(request: Request) {
+export async function getUserFromRequest(request: Request) {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
 
   if (!token) {
@@ -55,5 +55,10 @@ export async function getUserIdFromRequest(request: Request) {
     return null;
   }
 
-  return data.user.id;
+  return data.user;
+}
+
+export async function getUserIdFromRequest(request: Request) {
+  const user = await getUserFromRequest(request);
+  return user?.id ?? null;
 }
