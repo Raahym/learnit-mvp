@@ -1,21 +1,18 @@
 "use client";
 
-import {
-  BookOpenCheck,
-  Brain,
-  CalendarCheck,
-  ChevronRight,
-  FileText,
-  FlaskConical,
-  GraduationCap,
-  Search,
-  UploadCloud,
-  Zap
-} from "lucide-react";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { useAuth } from "@/lib/useAuth";
+import {
+  assignmentsFallback,
+  todayPlanFallback,
+  weeklyDataFallback,
+  type TodayPlanItem
+} from "@/lib/mock-dashboard";
 
-type AppTab = "command" | "library" | "flashcards" | "quiz" | "plan";
 type Session = { id: string; topic: string; gain: number; createdAt: string };
 type QuizAttempt = { id: string; selectedAnswer: string; isCorrect: boolean; createdAt: string };
 type Material = {
@@ -38,50 +35,52 @@ type Subject = {
   weak_topic: string | null;
 };
 
-const plan = [
-  { time: "08:00", task: "Review flashcards", detail: "Highest-retention-risk cards due before today's session" },
-  { time: "08:25", task: "Adaptive quiz", detail: "Mixed questions with a confidence rating on each answer" },
-  { time: "08:55", task: "Root cause fix", detail: "Worked examples for your lowest-readiness topic" },
-  { time: "09:20", task: "Exam readiness check", detail: "Score recalculates after the session" }
-];
-
-const flashcards = [
-  { front: "Newton's Second Law", back: "Force equals mass times acceleration. F = ma." },
-  { front: "Confidence accuracy", back: "How often your confidence matches whether you were actually correct." },
-  { front: "Retention risk", back: "A concept likely to be forgotten soon unless reviewed." }
-];
-
-const quiz = {
-  question: "A 2 kg object accelerates at 3 m/s^2. What force is required?",
-  options: ["5 N", "6 N", "9 N", "12 N"],
-  answer: "6 N"
+const typeLabels: Record<TodayPlanItem["type"], string> = {
+  review: "Review",
+  flashcards: "Flashcards",
+  assignment: "Assignment",
+  quiz: "Quiz"
 };
 
 function daysUntil(dateString: string | null) {
-  if (!dateString) return "No date set";
+  if (!dateString) return null;
   const diff = Math.ceil((new Date(dateString).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-  if (diff < 0) return "Past";
-  if (diff === 0) return "Today";
-  return `${diff} day${diff === 1 ? "" : "s"}`;
+  if (diff < 0) return null;
+  return diff;
 }
 
-export default function Dashboard() {
+function readinessBarColor(value: number) {
+  if (value >= 75) return "var(--success)";
+  if (value >= 60) return "var(--warning)";
+  return "var(--accent)";
+}
+
+function readinessTextColor(value: number) {
+  if (value >= 75) return "var(--success)";
+  if (value >= 60) return "var(--warning)";
+  return "var(--accent)";
+}
+
+function greetingName(email?: string | null) {
+  if (!email) return "there";
+  const local = email.split("@")[0];
+  return local.charAt(0).toUpperCase() + local.slice(1);
+}
+
+export default function DashboardPage() {
   const { user, authorizedFetch } = useAuth();
-  const [tab, setTab] = useState<AppTab>("command");
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
-  const [sessionResult, setSessionResult] = useState("Ready to analyze your next study session.");
-  const [revealedCard, setRevealedCard] = useState(0);
-  const [quizChoice, setQuizChoice] = useState("");
-  const [analysisState, setAnalysisState] = useState("Idle");
+  const [completedTasks, setCompletedTasks] = useState<string[]>([]);
   const [sessionTopic, setSessionTopic] = useState("");
   const [sessionMinutes, setSessionMinutes] = useState("35");
   const [sessionConfidence, setSessionConfidence] = useState("3");
+  const [sessionResult, setSessionResult] = useState("");
   const [uploadMessage, setUploadMessage] = useState("");
-  const [aiMessage, setAiMessage] = useState("AI engine ready.");
+  const [aiMessage, setAiMessage] = useState("");
 
   useEffect(() => {
     loadWorkspace();
@@ -105,22 +104,26 @@ export default function Dashboard() {
 
     if (sessionsResponse.ok) {
       const data = await sessionsResponse.json();
-      setSessions((data.sessions ?? []).map((session: any) => ({
-        id: session.id,
-        topic: session.topic,
-        gain: Number(session.readiness_gain ?? 0),
-        createdAt: new Date(session.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      })));
+      setSessions(
+        (data.sessions ?? []).map((session: { id: string; topic: string; readiness_gain?: number; created_at: string }) => ({
+          id: session.id,
+          topic: session.topic,
+          gain: Number(session.readiness_gain ?? 0),
+          createdAt: new Date(session.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        }))
+      );
     }
 
     if (attemptsResponse.ok) {
       const data = await attemptsResponse.json();
-      setQuizAttempts((data.attempts ?? []).map((attempt: any) => ({
-        id: attempt.id,
-        selectedAnswer: attempt.selected_answer,
-        isCorrect: Boolean(attempt.is_correct),
-        createdAt: new Date(attempt.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      })));
+      setQuizAttempts(
+        (data.attempts ?? []).map((attempt: { id: string; selected_answer: string; is_correct: boolean; created_at: string }) => ({
+          id: attempt.id,
+          selectedAnswer: attempt.selected_answer,
+          isCorrect: Boolean(attempt.is_correct),
+          createdAt: new Date(attempt.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        }))
+      );
     }
 
     if (materialsResponse.ok) {
@@ -130,6 +133,11 @@ export default function Dashboard() {
 
     setIsLoadingData(false);
   }
+
+  const urgentSubject = useMemo(() => {
+    if (!subjects.length) return null;
+    return [...subjects].sort((a, b) => (daysUntil(a.exam_date) ?? 999) - (daysUntil(b.exam_date) ?? 999))[0];
+  }, [subjects]);
 
   const weakTopics = useMemo(
     () =>
@@ -144,25 +152,32 @@ export default function Dashboard() {
     [subjects]
   );
 
-  const overallReadiness = useMemo(() => {
-    const base = subjects.length
-      ? Math.round(subjects.reduce((sum, subject) => sum + subject.readiness, 0) / subjects.length)
-      : 50;
-    const bonus = sessions.reduce((sum, session) => sum + session.gain, 0);
-    return Math.min(97, base + bonus);
-  }, [subjects, sessions]);
-
   const primarySubject = subjects[0]?.name ?? "General";
+  const urgentDays = urgentSubject ? daysUntil(urgentSubject.exam_date) : null;
+  const todayLabel = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  const todayPlan = todayPlanFallback.map((item) => ({
+    ...item,
+    subject: urgentSubject?.name ?? item.subject
+  }));
+  const totalMinutes = todayPlan.reduce((sum, task) => sum + task.duration, 0);
+  const completedMinutes = todayPlan.filter((task) => completedTasks.includes(task.id)).reduce((sum, task) => sum + task.duration, 0);
 
-  async function logSession(topic = sessionTopic || weakTopics[0]?.name || "General review") {
-    setSessionResult("Analyzing session...");
-    const minutes = Number(sessionMinutes || 35);
-    const confidence = Number(sessionConfidence || 3);
+  const priorityTopic = weakTopics[0]?.name ?? "your priority topic";
+  const prioritySubject = weakTopics[0]?.subject ?? urgentSubject?.name ?? "your subject";
+
+  async function logSession(topic = sessionTopic || priorityTopic) {
+    setSessionResult("Saving session...");
 
     const response = await authorizedFetch("/api/study-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subject: primarySubject, topic, confidence, minutes, weakTopic: weakTopics[0]?.name })
+      body: JSON.stringify({
+        subject: primarySubject,
+        topic,
+        confidence: Number(sessionConfidence || 3),
+        minutes: Number(sessionMinutes || 35),
+        weakTopic: weakTopics[0]?.name
+      })
     });
 
     const data = await response.json();
@@ -172,42 +187,27 @@ export default function Dashboard() {
     }
 
     const gain = Number(data.readinessGain ?? 4);
-    setSessions((current) => [
-      { id: crypto.randomUUID(), topic, gain, createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) },
-      ...current
-    ].slice(0, 5));
-    if (data.readiness !== null && data.readiness !== undefined) {
-      setSubjects((current) => current.map((subject) => subject.name === primarySubject ? { ...subject, readiness: Number(data.readiness) } : subject));
-    }
-    setSessionResult(`+${gain}% readiness. ${data.recommendation}`);
-  }
-
-  async function chooseQuizAnswer(option: string) {
-    setQuizChoice(option);
-
-    const response = await authorizedFetch("/api/quiz-attempt", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        subject: primarySubject,
-        topic: weakTopics[0]?.name ?? "General review",
-        question: quiz.question,
-        selectedAnswer: option,
-        correctAnswer: quiz.answer,
-        confidence: 3
-      })
-    });
-
-    const data = await response.json();
-    if (data.ok) {
-      setQuizAttempts((current) => [
-        { id: crypto.randomUUID(), selectedAnswer: option, isCorrect: option === quiz.answer, createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) },
+    setSessions((current) =>
+      [
+        {
+          id: crypto.randomUUID(),
+          topic,
+          gain,
+          createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        },
         ...current
-      ].slice(0, 8));
-      if (data.readiness !== null && data.readiness !== undefined) {
-        setSubjects((current) => current.map((subject) => subject.name === primarySubject ? { ...subject, readiness: Number(data.readiness), weak_topic: option === quiz.answer ? subject.weak_topic : weakTopics[0]?.name ?? "General review" } : subject));
-      }
+      ].slice(0, 5)
+    );
+
+    if (data.readiness !== null && data.readiness !== undefined) {
+      setSubjects((current) =>
+        current.map((subject) =>
+          subject.name === primarySubject ? { ...subject, readiness: Number(data.readiness) } : subject
+        )
+      );
     }
+
+    setSessionResult(`+${gain}% readiness. ${data.recommendation}`);
   }
 
   async function uploadMaterial(event: ChangeEvent<HTMLInputElement>) {
@@ -220,10 +220,7 @@ export default function Dashboard() {
     form.append("subject", primarySubject);
     form.append("materialType", file.type.includes("pdf") ? "pdf" : "notes");
 
-    const response = await authorizedFetch("/api/materials", {
-      method: "POST",
-      body: form
-    });
+    const response = await authorizedFetch("/api/materials", { method: "POST", body: form });
     const data = await response.json();
 
     if (!response.ok || !data.ok) {
@@ -236,7 +233,7 @@ export default function Dashboard() {
     event.target.value = "";
   }
 
-  async function runAi(kind: "flashcards" | "quiz" | "explain" | "study-plan") {
+  async function runAi(kind: "flashcards" | "quiz" | "study-plan") {
     setAiMessage(`Generating ${kind.replace("-", " ")}...`);
     const response = await authorizedFetch(`/api/ai/${kind}`, {
       method: "POST",
@@ -244,258 +241,368 @@ export default function Dashboard() {
       body: JSON.stringify({
         subject: primarySubject,
         topic: weakTopics[0]?.name ?? sessionTopic ?? "General review",
-        question: quiz.question,
-        selectedAnswer: quizChoice || "No answer selected",
-        correctAnswer: quiz.answer,
         examDate: subjects[0]?.exam_date,
         weeklyHours: subjects[0]?.weekly_hours,
         count: 5
       })
     });
     const data = await response.json();
+    setAiMessage(response.ok && data.ok ? `${kind.replace("-", " ")} generated as structured JSON.` : data.error ?? "AI route failed.");
+  }
 
-    if (!response.ok || !data.ok) {
-      setAiMessage(data.error ?? "AI route failed.");
-      return;
-    }
-
-    setAiMessage(`${kind.replace("-", " ")} generated as structured JSON.`);
+  function toggleTask(id: string) {
+    setCompletedTasks((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
   }
 
   return (
-    <section className="appShell" id="dashboard">
-      <aside className="sidebar">
-        <div className="studentCard">
-          <GraduationCap size={26} />
-          <div>
-            <strong>Your Semester</strong>
-            <span>{user?.email}</span>
+    <div className="dashboard-page">
+      <header className="dashboard-header" style={{ marginBottom: 32 }}>
+        <p className="eyebrow">{todayLabel}</p>
+        <h1>Good morning, {greetingName(user?.email)}.</h1>
+        {urgentSubject && urgentDays !== null ? (
+          <p>
+            Your <strong>{urgentSubject.name}</strong> exam is in{" "}
+            <strong style={{ color: "var(--accent)" }}>{urgentDays} day{urgentDays === 1 ? "" : "s"}</strong>. Here&apos;s what matters most today.
+          </p>
+        ) : subjects.length === 0 ? (
+          <p>
+            Add a subject in <Link href="/app/onboarding" style={{ color: "var(--primary)" }}>onboarding</Link> to unlock exam-aware recommendations.
+          </p>
+        ) : (
+          <p>Here&apos;s what matters most in your workspace today.</p>
+        )}
+      </header>
+
+      <div className="dashboard-grid-3">
+        <div className="priority-card">
+          <p className="font-mono eyebrow" style={{ color: "var(--accent)", marginBottom: 12 }}>
+            Today&apos;s priority
+          </p>
+          <h2>
+            Review {priorityTopic} — {sessionMinutes || 15} min
+          </h2>
+          <p>
+            {weakTopics.length > 0 ? (
+              <>
+                This is your lowest-readiness topic in <strong>{prioritySubject}</strong>. Fixing it before your next exam improves readiness fastest.
+              </>
+            ) : (
+              <>Log a study session or complete a quiz to surface your next priority action.</>
+            )}
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+            <Button type="button" onClick={() => logSession()}>
+              Start review <ChevronRight size={16} />
+            </Button>
+            <div className="priority-meta">
+              <span>{sessionMinutes || 15} min</span>
+              <span>·</span>
+              <span>{prioritySubject}</span>
+              {urgentDays !== null && (
+                <>
+                  <span>·</span>
+                  <span>Exam in {urgentDays}d</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
-        {[
-          ["command", "Command center"],
-          ["library", "Content library"],
-          ["flashcards", "Flashcards"],
-          ["quiz", "Quiz"],
-          ["plan", "Study plan"]
-        ].map(([key, label]) => (
-          <button className={tab === key ? "sideItem active" : "sideItem"} key={key} onClick={() => setTab(key as AppTab)}>
-            {label}
-          </button>
-        ))}
-      </aside>
 
-      <div className="dashboard">
-        <div className="dashHeader">
-          <div>
-            <p className="eyebrow">Workspace</p>
-            <h2>{tab === "command" ? "Study command center" : tab[0].toUpperCase() + tab.slice(1)}</h2>
-          </div>
-          <button className="iconButton" onClick={() => logSession()}>
-            <Zap size={18} /> Log study session
-          </button>
-        </div>
-
-        <div className="metrics">
-          {subjects.length === 0 ? (
-            <article className="metric">
-              <span>No subjects yet</span>
-              <strong>--</strong>
-              <small><a href="/app/onboarding">Add a subject</a> to see readiness here.</small>
-            </article>
+        <div className="panel panel-body">
+          <p className="eyebrow" style={{ marginBottom: 12 }}>
+            Nearest exam
+          </p>
+          {urgentSubject && urgentDays !== null ? (
+            <>
+              <p className="metric-big">{urgentDays}</p>
+              <p style={{ color: "var(--fg-2)", fontSize: 14, margin: "4px 0 0" }}>
+                day{urgentDays === 1 ? "" : "s"} until exam
+              </p>
+              <p style={{ color: "var(--fg-3)", fontSize: 12, margin: "4px 0 16px" }}>{urgentSubject.name}</p>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--fg-3)", marginBottom: 6 }}>
+                <span>Readiness</span>
+                <span className="font-mono">{urgentSubject.readiness}%</span>
+              </div>
+              <div className="progress-bar">
+                <span style={{ width: `${urgentSubject.readiness}%`, background: readinessBarColor(urgentSubject.readiness) }} />
+              </div>
+              <p style={{ fontSize: 11, color: readinessTextColor(urgentSubject.readiness), marginTop: 8 }}>
+                {urgentSubject.readiness >= 75 ? "Exam-ready range" : "Not yet exam-ready"}
+              </p>
+            </>
           ) : (
-            subjects.map((subject) => (
-              <article className="metric subjectMetric" key={subject.id}>
-                <span>{subject.name}</span>
-                <strong>{subject.readiness}%</strong>
-                <small>{daysUntil(subject.exam_date)}{subject.weak_topic ? ` / weak: ${subject.weak_topic}` : ""}</small>
-              </article>
+            <p style={{ color: "var(--fg-2)", fontSize: 14 }}>No exam date set yet.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="dashboard-grid-row">
+        <div className="panel panel-body">
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+            <p className="eyebrow">This week&apos;s study time</p>
+            <p className="font-mono" style={{ fontSize: 12, color: "var(--fg-2)" }}>
+              {Math.round(weeklyDataFallback.reduce((sum, day) => sum + day.minutes, 0) / 60)}h guide
+            </p>
+          </div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 64 }}>
+            {weeklyDataFallback.map((day) => {
+              const pct = Math.min(day.minutes / day.target, 1);
+              const isToday = day.day === new Date().toLocaleDateString("en-GB", { weekday: "short" });
+              return (
+                <div key={day.day} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: "100%", height: 48, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+                    <div
+                      style={{
+                        width: "100%",
+                        height: `${pct * 48}px`,
+                        borderRadius: 2,
+                        background: isToday ? "var(--primary)" : day.minutes >= day.target ? "var(--success)" : "var(--line-2)"
+                      }}
+                    />
+                  </div>
+                  <span className="font-mono" style={{ fontSize: 10, color: isToday ? "var(--primary)" : "var(--fg-3)" }}>
+                    {day.day}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="panel panel-body">
+          <p className="eyebrow" style={{ marginBottom: 16 }}>
+            Today
+          </p>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--fg-3)", marginBottom: 6 }}>
+              <span>Tasks done</span>
+              <span className="font-mono">
+                {completedTasks.length}/{todayPlan.length}
+              </span>
+            </div>
+            <div className="progress-bar">
+              <span style={{ width: `${(completedTasks.length / todayPlan.length) * 100}%`, background: "var(--primary)" }} />
+            </div>
+          </div>
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--fg-3)", marginBottom: 6 }}>
+              <span>Minutes</span>
+              <span className="font-mono">
+                {completedMinutes}/{totalMinutes}
+              </span>
+            </div>
+            <div className="progress-bar">
+              <span style={{ width: `${totalMinutes ? (completedMinutes / totalMinutes) * 100 : 0}%`, background: "var(--success)" }} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="dashboard-grid-row">
+        <div className="panel">
+          <div className="panel-header">
+            <p className="eyebrow" style={{ margin: 0 }}>
+              Today&apos;s plan
+            </p>
+            <span className="form-muted" style={{ fontSize: 12 }}>
+              Planner preview
+            </span>
+          </div>
+          {todayPlan.map((task) => {
+            const done = completedTasks.includes(task.id);
+            return (
+              <div key={task.id} className="list-row" style={{ opacity: done ? 0.55 : 1 }}>
+                <button
+                  type="button"
+                  onClick={() => toggleTask(task.id)}
+                  aria-label={done ? "Mark incomplete" : "Mark complete"}
+                  style={{
+                    width: 16,
+                    height: 16,
+                    marginTop: 2,
+                    borderRadius: 4,
+                    border: done ? "1px solid var(--success)" : "1px solid var(--line-2)",
+                    background: done ? "var(--success)" : "transparent",
+                    cursor: "pointer",
+                    flexShrink: 0
+                  }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <span
+                      className="font-mono"
+                      style={{
+                        fontSize: 10,
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        background: "var(--primary-light)",
+                        color: "var(--primary)"
+                      }}
+                    >
+                      {typeLabels[task.type]}
+                    </span>
+                    {task.priority === "critical" && (
+                      <span className="font-mono" style={{ fontSize: 10, color: "var(--accent)" }}>
+                        urgent
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ margin: "6px 0 0", fontSize: 14, fontWeight: 500, textDecoration: done ? "line-through" : "none" }}>
+                    {task.title}
+                  </p>
+                  <p className="font-mono" style={{ margin: "4px 0 0", fontSize: 11, color: "var(--fg-3)" }}>
+                    {task.time} · {task.duration} min · {task.subject}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="panel">
+          <div className="panel-header">
+            <p className="eyebrow" style={{ margin: 0 }}>
+              Weak topics
+            </p>
+          </div>
+          {isLoadingData ? (
+            <p className="form-muted" style={{ padding: 20 }}>
+              Loading your topics...
+            </p>
+          ) : weakTopics.length === 0 ? (
+            <p className="form-muted" style={{ padding: 20 }}>
+              No weak topics flagged yet. Add one from onboarding or log quiz attempts.
+            </p>
+          ) : (
+            weakTopics.slice(0, 5).map((topic) => (
+              <div key={`${topic.subject}-${topic.name}`} style={{ padding: "12px 20px", borderTop: "1px solid var(--line)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>{topic.name}</p>
+                  <span className="font-mono" style={{ fontSize: 11, color: "var(--accent)" }}>
+                    {topic.readiness}%
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: 11, color: "var(--fg-3)" }}>{topic.subject}</p>
+                <div className="progress-bar" style={{ marginTop: 8 }}>
+                  <span style={{ width: `${topic.readiness}%`, background: "var(--accent)" }} />
+                </div>
+              </div>
             ))
           )}
-          <article className="metric">
-            <span>Overall readiness</span>
-            <strong>{overallReadiness}%</strong>
-            <small>Average subject readiness plus logged sessions</small>
-          </article>
-          <article className="metric">
-            <span>Saved sessions</span>
-            <strong>{sessions.length}</strong>
-            <small>Stored in Supabase</small>
-          </article>
+        </div>
+      </div>
+
+      <div className="dashboard-grid-row">
+        <div className="panel">
+          <div className="panel-header">
+            <p className="eyebrow" style={{ margin: 0 }}>
+              Exam readiness
+            </p>
+          </div>
+          {subjects.length === 0 ? (
+            <p className="form-muted" style={{ padding: 20 }}>
+              <Link href="/app/onboarding" style={{ color: "var(--primary)" }}>
+                Add a subject
+              </Link>{" "}
+              to see readiness here.
+            </p>
+          ) : (
+            subjects.map((subject) => (
+              <div key={subject.id} className="list-row">
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--primary)", flexShrink: 0 }} />
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>{subject.name}</p>
+                    {daysUntil(subject.exam_date) !== null && (
+                      <span className="font-mono" style={{ marginLeft: "auto", fontSize: 11, color: "var(--fg-3)" }}>
+                        {daysUntil(subject.exam_date)}d
+                      </span>
+                    )}
+                  </div>
+                  <div className="progress-bar">
+                    <span style={{ width: `${subject.readiness}%`, background: readinessBarColor(subject.readiness) }} />
+                  </div>
+                </div>
+                <span className="font-mono" style={{ fontSize: 14, fontWeight: 500, color: readinessTextColor(subject.readiness), width: 40, textAlign: "right" }}>
+                  {subject.readiness}%
+                </span>
+              </div>
+            ))
+          )}
         </div>
 
-        {tab === "command" && (
-          <>
-            <div className="commandRow">
-              <article className="uploadPanel">
-                <UploadCloud size={28} />
+        <div className="panel">
+          <div className="panel-header">
+            <p className="eyebrow" style={{ margin: 0 }}>
+              Due soon
+            </p>
+            <span className="form-muted" style={{ fontSize: 12 }}>
+              Planner preview
+            </span>
+          </div>
+          {assignmentsFallback.map((assignment) => (
+            <div key={assignment.id} style={{ padding: "12px 20px", borderTop: "1px solid var(--line)" }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <span
+                  className="font-mono"
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 500,
+                    width: 24,
+                    textAlign: "center",
+                    color: assignment.daysUntilDue <= 3 ? "var(--accent)" : assignment.daysUntilDue <= 7 ? "var(--warning)" : "var(--fg-3)"
+                  }}
+                >
+                  {assignment.daysUntilDue}d
+                </span>
                 <div>
-                  <strong>Content intake</strong>
-                  <span>{materials.length} uploaded materials in this workspace</span>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>{assignment.title}</p>
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--fg-3)" }}>{assignment.subject}</p>
                 </div>
-                <label className="uploadButton">
-                  Upload
-                  <input type="file" accept=".pdf,.doc,.docx,.txt,.md,.ppt,.pptx" onChange={uploadMaterial} />
-                </label>
-              </article>
-              <article className="coachPanel">
-                <span>AI Coach</span>
-                <strong>
-                  {weakTopics[0]
-                    ? `Do ${weakTopics[0].name} first. It's your lowest-readiness topic in ${weakTopics[0].subject}.`
-                    : "Add a subject with a weak topic to get a targeted recommendation."}
-                </strong>
-              </article>
-            </div>
-            <div className="dashGrid">
-              <WeakTopicPanel weakTopics={weakTopics} isLoading={isLoadingData} />
-              <PlanPanel />
-              <SearchPanel />
-              <PastPaperPanel />
-            </div>
-            <div className="sessionLogger">
-              <input value={sessionTopic} onChange={(event) => setSessionTopic(event.target.value)} placeholder="Topic studied, e.g. Newton's Laws" />
-              <input value={sessionMinutes} onChange={(event) => setSessionMinutes(event.target.value)} type="number" min={1} placeholder="Minutes" />
-              <select value={sessionConfidence} onChange={(event) => setSessionConfidence(event.target.value)}>
-                <option value="1">Confidence 1</option>
-                <option value="2">Confidence 2</option>
-                <option value="3">Confidence 3</option>
-                <option value="4">Confidence 4</option>
-                <option value="5">Confidence 5</option>
-              </select>
-              <button type="button" className="primaryButton" onClick={() => logSession()}>
-                <Zap size={16} /> Save session
-              </button>
-            </div>
-            <div className="sessionResult">{analysisState} / {sessionResult} / {uploadMessage || aiMessage}</div>
-            <div className="aiActions">
-              <button type="button" onClick={() => runAi("flashcards")}>Generate flashcards</button>
-              <button type="button" onClick={() => runAi("quiz")}>Generate quiz</button>
-              <button type="button" onClick={() => runAi("study-plan")}>Generate study plan</button>
-            </div>
-          </>
-        )}
-
-        {tab === "library" && (
-          <div className="tablePanel">
-            {materials.length === 0 ? (
-              <div className="libraryRow">
-                <FileText size={18} />
-                <div><strong>No materials uploaded yet</strong><span>Upload PDFs, notes, or slides from the command center.</span></div>
-                <b>Empty</b>
               </div>
-            ) : materials.map((item) => (
-              <div className="libraryRow" key={item.id}>
-                <FileText size={18} />
-                <div><strong>{item.title}</strong><span>{item.material_type} / {item.concept_count} concepts / {item.subject ?? "General"}</span></div>
-                <b>{item.status}</b>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tab === "flashcards" && (
-          <div className="practicePanel">
-            <div className="flashcard">
-              <span>Card {revealedCard + 1} of {flashcards.length}</span>
-              <h3>{flashcards[revealedCard].front}</h3>
-              <p>{flashcards[revealedCard].back}</p>
             </div>
-            <button className="primaryButton" onClick={() => setRevealedCard((revealedCard + 1) % flashcards.length)}>
-              Next card <ChevronRight size={18} />
-            </button>
-          </div>
-        )}
-
-        {tab === "quiz" && (
-          <div className="practicePanel">
-            <h3>{quiz.question}</h3>
-            <div className="optionGrid">
-              {quiz.options.map((option) => (
-                <button className={quizChoice === option ? "quizOption selected" : "quizOption"} key={option} onClick={() => chooseQuizAnswer(option)}>
-                  {option}
-                </button>
-              ))}
-            </div>
-            <div className="sessionResult">
-              {quizChoice ? (quizChoice === quiz.answer ? "Correct. Force = mass x acceleration = 2 x 3 = 6 N." : "Not quite. Use F = ma, so 2 x 3 = 6 N.") : "Choose an answer to get feedback."}
-            </div>
-            {quizChoice && (
-              <button type="button" className="secondaryButton" onClick={() => runAi("explain")}>
-                Explain this answer
-              </button>
-            )}
-            <div className="attemptStrip">
-              <strong>{quizAttempts.length}</strong>
-              <span>quiz attempts saved to your workspace</span>
-            </div>
-          </div>
-        )}
-
-        {tab === "plan" && (
-          <div className="dashGrid">
-            <PlanPanel />
-            <article className="toolPanel">
-              <div className="panelTitle"><BookOpenCheck size={18} /> Recent sessions</div>
-              {sessions.length === 0 ? <p className="muted">No sessions logged yet.</p> : sessions.map((session) => (
-                <div className="planRow" key={session.id}><time>{session.createdAt}</time><div><strong>{session.topic}</strong><span>+{session.gain}% readiness</span></div></div>
-              ))}
-            </article>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
-    </section>
-  );
-}
 
-function WeakTopicPanel({ weakTopics, isLoading }: { weakTopics: { name: string; subject: string; readiness: number }[]; isLoading: boolean }) {
-  return (
-    <article className="toolPanel large">
-      <div className="panelTitle"><Brain size={18} /> Weak topic detection</div>
-      {isLoading ? (
-        <p className="muted">Loading your topics...</p>
-      ) : weakTopics.length === 0 ? (
-        <p className="muted">No weak topics flagged yet. Add one from onboarding or update a subject.</p>
-      ) : (
-        weakTopics.map((topic) => (
-          <div className="topicRow" key={topic.name}>
-            <div><strong>{topic.name}</strong><span>{topic.subject}</span></div>
-            <b>{topic.readiness}%</b>
-          </div>
-        ))
-      )}
-    </article>
-  );
-}
-
-function PlanPanel() {
-  return (
-    <article className="toolPanel">
-      <div className="panelTitle"><CalendarCheck size={18} /> Tonight's plan</div>
-      {plan.map((item) => (
-        <div className="planRow" key={item.time}><time>{item.time}</time><div><strong>{item.task}</strong><span>{item.detail}</span></div></div>
-      ))}
-    </article>
-  );
-}
-
-function SearchPanel() {
-  return (
-    <article className="toolPanel">
-      <div className="panelTitle"><Search size={18} /> Search everything</div>
-      <div className="searchBox">velocity across notes, formulas, quizzes</div>
-      <div className="resultStack"><span>Formula: v = u + at</span><span>Past mistake: used time in minutes</span><span>Card due: velocity vs speed</span></div>
-      <p className="muted">Finds related formulas, past mistakes, tutor chats, cards, and exam questions from one concept search.</p>
-    </article>
-  );
-}
-
-function PastPaperPanel() {
-  return (
-    <article className="toolPanel">
-      <div className="panelTitle"><FlaskConical size={18} /> Past paper engine</div>
-      <div className="paperBars"><span style={{ height: "76%" }} /><span style={{ height: "52%" }} /><span style={{ height: "88%" }} /><span style={{ height: "38%" }} /><span style={{ height: "64%" }} /></div>
-      <p className="muted">Topic frequency, predicted question patterns, and mock drills from papers and mark schemes.</p>
-    </article>
+      <section className="dashboard-quick-actions">
+        <h3>Quick actions</h3>
+        <p className="form-muted" style={{ margin: "0 0 12px" }}>
+          {materials.length} materials · {sessions.length} sessions · {quizAttempts.length} quiz attempts saved in Supabase
+        </p>
+        <div className="quick-actions-grid">
+          <Input value={sessionTopic} onChange={(event) => setSessionTopic(event.target.value)} placeholder="Topic studied" />
+          <Input value={sessionMinutes} onChange={(event) => setSessionMinutes(event.target.value)} type="number" min={1} placeholder="Minutes" />
+          <select className="input" value={sessionConfidence} onChange={(event) => setSessionConfidence(event.target.value)}>
+            {[1, 2, 3, 4, 5].map((level) => (
+              <option key={level} value={level}>
+                Confidence {level}
+              </option>
+            ))}
+          </select>
+          <Button type="button" onClick={() => logSession()}>
+            Save session
+          </Button>
+        </div>
+        <div className="quick-actions-buttons">
+          <label className="btn btn-secondary" style={{ cursor: "pointer" }}>
+            Upload material
+            <input type="file" accept=".pdf,.doc,.docx,.txt,.md,.ppt,.pptx" onChange={uploadMaterial} style={{ display: "none" }} />
+          </label>
+          <Button type="button" variant="secondary" onClick={() => runAi("flashcards")}>
+            Generate flashcards
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => runAi("quiz")}>
+            Generate quiz
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => runAi("study-plan")}>
+            Generate study plan
+          </Button>
+        </div>
+        {(sessionResult || uploadMessage || aiMessage) && (
+          <div className="status-message">{[sessionResult, uploadMessage, aiMessage].filter(Boolean).join(" · ")}</div>
+        )}
+      </section>
+    </div>
   );
 }

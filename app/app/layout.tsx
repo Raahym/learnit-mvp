@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { GraduationCap, LogOut, UserCircle } from "lucide-react";
+import { GraduationCap } from "lucide-react";
+import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/lib/useAuth";
 
 type Profile = {
@@ -12,13 +13,20 @@ type Profile = {
   onboarding_complete: boolean;
 };
 
+type Subject = {
+  id: string;
+  name: string;
+  exam_date: string | null;
+  readiness: number;
+};
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, isReady, authorizedFetch, logout } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
   const [isProfileReady, setIsProfileReady] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (isReady && !user) {
@@ -34,14 +42,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     setIsProfileReady(false);
 
-    authorizedFetch("/api/profile")
-      .then((response) => response.json())
-      .then((data) => {
+    Promise.all([authorizedFetch("/api/profile"), authorizedFetch("/api/subjects")])
+      .then(async ([profileResponse, subjectsResponse]) => {
+        const profileData = await profileResponse.json();
+        const subjectsData = subjectsResponse.ok ? await subjectsResponse.json() : { subjects: [] };
+
         if (cancelled) return;
-        setProfile(data.profile ?? null);
+
+        setProfile(profileData.profile ?? null);
+        setSubjects(subjectsData.subjects ?? []);
         setIsProfileReady(true);
 
-        const onboardingComplete = data.profile?.onboarding_complete ?? true;
+        const onboardingComplete = profileData.profile?.onboarding_complete ?? true;
         if (!onboardingComplete && pathname !== "/app/onboarding") {
           router.replace("/app/onboarding");
         }
@@ -63,34 +75,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (!isReady || !user || (!isProfileReady && pathname !== "/app/onboarding")) {
     return (
-      <div className="loadingScreen">
-        <GraduationCap size={28} />
+      <div className="loading-screen">
+        <GraduationCap size={28} color="var(--primary)" />
         <p>Loading your workspace...</p>
       </div>
     );
   }
 
   return (
-    <div className="appWrap">
-      <nav className="topbar">
-        <a className="brand" href="/">
-          Learn<span>It</span>
-        </a>
-        <div className="accountMenu">
-          <button type="button" className="iconButton" onClick={() => setMenuOpen((open) => !open)}>
-            <UserCircle size={18} /> {profile?.full_name || user.email}
-          </button>
-          {menuOpen && (
-            <div className="accountMenuDropdown">
-              <span>{user.email}</span>
-              <button type="button" onClick={handleLogout}>
-                <LogOut size={14} /> Log out
-              </button>
-            </div>
-          )}
-        </div>
-      </nav>
+    <AppShell
+      profileName={profile?.full_name}
+      profileEmail={profile?.email ?? user.email}
+      subjects={subjects}
+      onLogout={handleLogout}
+    >
       {children}
-    </div>
+    </AppShell>
   );
 }

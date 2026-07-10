@@ -1,9 +1,39 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { GraduationCap } from "lucide-react";
+import { Logo } from "@/components/ui/Logo";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { useAuth } from "@/lib/useAuth";
+
+function AuthVisual() {
+  return (
+    <div className="auth-visual">
+      <blockquote>&ldquo;The gap between your confidence and your actual score — that&apos;s what we fix.&rdquo;</blockquote>
+      <div className="auth-metric-stack">
+        {[
+          { label: "Confidence", value: "74%", note: "You feel ready" },
+          { label: "Mastery", value: "61%", note: "Quiz performance tells a different story" },
+          { label: "Gap", value: "−13%", note: "LearnIt targets this difference", accent: true }
+        ].map((metric) => (
+          <div key={metric.label} className={`auth-metric ${metric.accent ? "accent" : ""}`}>
+            <div>
+              <p className="font-mono eyebrow" style={{ margin: 0, color: metric.accent ? "var(--accent)" : "var(--sidebar-muted)" }}>
+                {metric.label}
+              </p>
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: "rgba(255,255,255,0.75)" }}>{metric.note}</p>
+            </div>
+            <span className="font-mono" style={{ fontSize: 20, fontWeight: 500, color: metric.accent ? "var(--accent)" : "var(--surface)" }}>
+              {metric.value}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -28,7 +58,7 @@ export default function LoginPage() {
     }
 
     setIsSubmitting(true);
-    setMessage("Signing in...");
+    setMessage("");
 
     const { error } = await supabase.auth.signInWithPassword({ email, password });
 
@@ -42,43 +72,58 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="authPage">
-      <div className="authCard">
-        <a className="brand" href="/">
-          Learn<span>It</span>
-        </a>
-        <div className="authIntro">
-          <GraduationCap size={22} />
-          <h1>Log in to your workspace</h1>
-          <p>Pick up your readiness score, saved sessions, and quiz history where you left off.</p>
-        </div>
+    <main className="auth-page">
+      <div className="auth-form-side">
+        <div className="auth-form-wrap">
+          <div style={{ marginBottom: 40 }}>
+            <Logo href="/" />
+          </div>
 
-        <form onSubmit={handleSubmit}>
-          <input
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="student@email.com"
-            type="email"
-            required
-          />
-          <input
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="Password"
-            type="password"
-            minLength={6}
-            required
-          />
-          <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Signing in..." : "Log in"}
+          <h1>Welcome back</h1>
+          <p>Sign in to continue where you left off.</p>
+
+          <button type="button" className="btn btn-secondary btn-full" disabled title="Google OAuth not configured yet" style={{ marginBottom: 16, opacity: 0.55 }}>
+            Continue with Google
           </button>
-          {message && <p className={message.toLowerCase().includes("sign") ? "muted" : "formError"}>{message}</p>}
-        </form>
 
-        <p className="authSwitch">
-          New to LearnIt? <a href="/signup">Create an account</a>
-        </p>
+          <div className="auth-divider">
+            <hr />
+            <span>or</span>
+            <hr />
+          </div>
+
+          <form onSubmit={handleSubmit} className="auth-form">
+            <Input
+              label="Email address"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="student@email.com"
+              type="email"
+              required
+            />
+            <Input
+              label="Password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Enter your password"
+              type="password"
+              minLength={6}
+              required
+            />
+
+            {message && <div className="form-error">{message}</div>}
+
+            <Button type="submit" fullWidth disabled={isSubmitting}>
+              {isSubmitting ? "Signing in..." : "Sign in"}
+            </Button>
+          </form>
+
+          <p className="auth-switch">
+            Don&apos;t have an account? <Link href="/signup">Create one — it&apos;s free</Link>
+          </p>
+        </div>
       </div>
+      <AuthVisual />
     </main>
   );
 }

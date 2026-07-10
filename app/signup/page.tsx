@@ -1,9 +1,39 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { GraduationCap } from "lucide-react";
+import { Logo } from "@/components/ui/Logo";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { useAuth } from "@/lib/useAuth";
+
+function AuthVisual() {
+  return (
+    <div className="auth-visual">
+      <blockquote>&ldquo;The gap between your confidence and your actual score — that&apos;s what we fix.&rdquo;</blockquote>
+      <div className="auth-metric-stack">
+        {[
+          { label: "Confidence", value: "74%", note: "You feel ready" },
+          { label: "Mastery", value: "61%", note: "Quiz performance tells a different story" },
+          { label: "Gap", value: "−13%", note: "LearnIt targets this difference", accent: true }
+        ].map((metric) => (
+          <div key={metric.label} className={`auth-metric ${metric.accent ? "accent" : ""}`}>
+            <div>
+              <p className="font-mono eyebrow" style={{ margin: 0, color: metric.accent ? "var(--accent)" : "var(--sidebar-muted)" }}>
+                {metric.label}
+              </p>
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: "rgba(255,255,255,0.75)" }}>{metric.note}</p>
+            </div>
+            <span className="font-mono" style={{ fontSize: 20, fontWeight: 500, color: metric.accent ? "var(--accent)" : "var(--surface)" }}>
+              {metric.value}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function SignupPage() {
   const router = useRouter();
@@ -28,7 +58,7 @@ export default function SignupPage() {
     }
 
     setIsSubmitting(true);
-    setMessage("Creating account...");
+    setMessage("");
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
     const redirectTo = `${siteUrl.replace(/\/$/, "")}/auth/callback`;
@@ -56,43 +86,64 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="authPage">
-      <div className="authCard">
-        <a className="brand" href="/">
-          Learn<span>It</span>
-        </a>
-        <div className="authIntro">
-          <GraduationCap size={22} />
-          <h1>Create a real LearnIt account</h1>
-          <p>Set up subjects, track sessions, and get a personalized readiness score in your own workspace.</p>
-        </div>
+    <main className="auth-page">
+      <div className="auth-form-side">
+        <div className="auth-form-wrap">
+          <div style={{ marginBottom: 40 }}>
+            <Logo href="/" />
+          </div>
 
-        <form onSubmit={handleSubmit}>
-          <input
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="student@email.com"
-            type="email"
-            required
-          />
-          <input
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="Password (min 6 characters)"
-            type="password"
-            minLength={6}
-            required
-          />
-          <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Creating account..." : "Create account"}
+          <h1>Create your account</h1>
+          <p>Set up your study workspace in under 2 minutes.</p>
+
+          <button type="button" className="btn btn-secondary btn-full" disabled title="Google OAuth not configured yet" style={{ marginBottom: 16, opacity: 0.55 }}>
+            Continue with Google
           </button>
-          {message && <p className={message.toLowerCase().includes("creat") ? "muted" : "formError"}>{message}</p>}
-        </form>
 
-        <p className="authSwitch">
-          Already have an account? <a href="/login">Log in</a>
-        </p>
+          <div className="auth-divider">
+            <hr />
+            <span>or</span>
+            <hr />
+          </div>
+
+          <form onSubmit={handleSubmit} className="auth-form">
+            <Input
+              label="Email address"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="student@email.com"
+              type="email"
+              required
+            />
+            <Input
+              label="Password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="At least 6 characters"
+              type="password"
+              minLength={6}
+              required
+            />
+
+            {message && (
+              <div className={message.toLowerCase().includes("created") ? "form-muted" : "form-error"}>{message}</div>
+            )}
+
+            <Button type="submit" fullWidth disabled={isSubmitting}>
+              {isSubmitting ? "Creating account..." : "Create account"}
+            </Button>
+          </form>
+
+          <p className="auth-switch">
+            Already have an account? <Link href="/login">Sign in</Link>
+          </p>
+
+          <p className="form-muted" style={{ textAlign: "center", fontSize: 11, marginTop: 16 }}>
+            By creating an account, you agree to our Terms of Service and Privacy Policy.
+          </p>
+        </div>
       </div>
+      <AuthVisual />
     </main>
   );
 }
