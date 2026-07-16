@@ -1,7 +1,8 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   AlertCircle,
   BarChart3,
@@ -33,13 +34,13 @@ type AppShellProps = {
 
 const mainNav = [
   { href: "/app", label: "Today", icon: Home },
-  { href: "/app", label: "Subjects", icon: BookOpen, disabled: true },
-  { href: "/app", label: "Plan", icon: Calendar, disabled: true },
-  { href: "/app", label: "Flashcards", icon: Layers, disabled: true },
-  { href: "/app", label: "Quizzes", icon: FileText, disabled: true },
-  { href: "/app", label: "Progress", icon: BarChart3, disabled: true },
-  { href: "/app", label: "Library", icon: BookOpen, disabled: true },
-  { href: "/app", label: "Mistakes", icon: AlertCircle, disabled: true }
+  { href: "/app/subjects", label: "Subjects", icon: BookOpen },
+  { href: "/app/plan", label: "Plan", icon: Calendar },
+  { href: "/app/flashcards", label: "Flashcards", icon: Layers },
+  { href: "/app/quizzes", label: "Quizzes", icon: FileText },
+  { href: "/app/progress", label: "Progress", icon: BarChart3 },
+  { href: "/app/library", label: "Library", icon: BookOpen },
+  { href: "/app/mistakes", label: "Mistakes", icon: AlertCircle }
 ];
 
 const subjectColors = ["#1B3CA8", "#276649", "#6B3FB5", "#BC4F15", "#9A5D08"];
@@ -63,7 +64,6 @@ function initials(name?: string | null, email?: string | null) {
 
 export function AppShell({ children, profileName, profileEmail, subjects = [], onLogout }: AppShellProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const urgentSubject = useMemo(() => {
@@ -122,22 +122,17 @@ export function AppShell({ children, profileName, profileEmail, subjects = [], o
         <nav className="app-nav">
           {mainNav.map((item) => {
             const Icon = item.icon;
-            const isActive = !item.disabled && pathname === item.href && item.label === "Today";
+            const isActive = pathname === item.href;
             return (
-              <button
+              <Link
                 key={item.label}
-                type="button"
                 className={`app-nav-item ${isActive ? "active" : ""}`}
-                disabled={item.disabled}
-                title={item.disabled ? "Coming in next phase" : undefined}
-                onClick={() => {
-                  if (!item.disabled) router.push(item.href);
-                }}
-                style={item.disabled ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
+                href={item.href}
+                style={{ textDecoration: "none" }}
               >
                 <Icon size={15} />
                 <span>{item.label}</span>
-              </button>
+              </Link>
             );
           })}
 
@@ -147,13 +142,11 @@ export function AppShell({ children, profileName, profileEmail, subjects = [], o
               {subjects.map((subject, index) => {
                 const days = daysUntil(subject.exam_date);
                 return (
-                  <button
+                  <Link
                     key={subject.id}
-                    type="button"
                     className="app-nav-item"
-                    style={{ paddingTop: 6, paddingBottom: 6 }}
-                    disabled
-                    title="Subject workspace coming in next phase"
+                    href="/app/subjects"
+                    style={{ paddingTop: 6, paddingBottom: 6, textDecoration: "none" }}
                   >
                     <span
                       style={{
@@ -172,7 +165,7 @@ export function AppShell({ children, profileName, profileEmail, subjects = [], o
                         {days}d
                       </span>
                     )}
-                  </button>
+                  </Link>
                 );
               })}
             </div>
@@ -185,16 +178,14 @@ export function AppShell({ children, profileName, profileEmail, subjects = [], o
             <p>{profileName || profileEmail || "Student"}</p>
             <p>{profileEmail ?? "LearnIt workspace"}</p>
           </div>
-          <button
-            type="button"
+          <Link
             className="app-nav-item"
-            style={{ width: "auto", padding: 6 }}
+            style={{ width: "auto", padding: 6, textDecoration: "none" }}
             aria-label="Settings"
-            disabled
-            title="Settings coming in next phase"
+            href="/app/settings"
           >
             <Settings size={15} />
-          </button>
+          </Link>
         </div>
         <button
           type="button"

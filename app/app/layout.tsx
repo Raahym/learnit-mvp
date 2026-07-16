@@ -53,7 +53,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         setSubjects(subjectsData.subjects ?? []);
         setIsProfileReady(true);
 
-        const onboardingComplete = profileData.profile?.onboarding_complete ?? true;
+        const onboardingComplete = profileData.profile?.onboarding_complete ?? false;
         if (!onboardingComplete && pathname !== "/app/onboarding") {
           router.replace("/app/onboarding");
         }
