@@ -5,7 +5,8 @@ export async function POST(request: Request) {
   const { userId, error } = await requireUserWhenConfigured(request);
   if (error) return error;
 
-  const { subject, topic, sourceText, count } = await getAiContext(request);
+  const { subject, topic, sourceText, count, error: contextError } = await getAiContext(request);
+  if (contextError) return contextError;
   const facts = splitSource(sourceText || `${topic} definition. ${topic} formula. ${topic} common mistake.`);
   const questions = Array.from({ length: count }, (_, index) => {
     const fact = facts[index % facts.length] ?? topic;

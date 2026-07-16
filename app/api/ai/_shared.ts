@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
+import { parseJson, rateLimit, shortText } from "@/lib/api-safety";
 import { getSupabaseAdmin, getUserIdFromRequest, hasSupabaseServerConfig } from "@/lib/supabase";
 
 export type AiRequest = {
@@ -8,15 +10,33 @@ export type AiRequest = {
   count?: number;
 };
 
+const aiRequestSchema = z.object({
+  subject: shortText(120).default("General"),
+  topic: shortText(160).default("Revision"),
+  sourceText: z.string().trim().max(4000).optional().default(""),
+  count: z.coerce.number().int().min(1).max(12).default(5),
+  question: z.string().trim().max(1000).optional(),
+  selectedAnswer: z.string().trim().max(500).optional(),
+  correctAnswer: z.string().trim().max(500).optional(),
+  examDate: z.string().trim().max(80).optional(),
+  weeklyHours: z.coerce.number().int().min(1).max(80).optional()
+});
+
 export async function getAiContext(request: Request) {
-  const body = await request.json().catch(() => null);
-  const subject = String(body?.subject ?? "General").trim() || "General";
-  const topic = String(body?.topic ?? "Revision").trim() || "Revision";
-  const sourceText = body?.sourceText ? String(body.sourceText).trim().slice(0, 4000) : "";
-  const count = Math.max(1, Math.min(12, Number(body?.count ?? 5)));
+  const limited = rateLimit(request, { key: "ai:post", limit: 30, windowMs: 60_000 });
+  if (limited) {
+    return { body: null, subject: "", topic: "", sourceText: "", count: 0, userId: null, error: limited };
+  }
+
+  const parsed = await parseJson(request, aiRequestSchema);
+  if (parsed.error) {
+    return { body: null, subject: "", topic: "", sourceText: "", count: 0, userId: null, error: parsed.error };
+  }
+
+  const { subject, topic, sourceText, count } = parsed.data;
   const userId = await getUserIdFromRequest(request);
 
-  return { body, subject, topic, sourceText, count, userId };
+  return { body: parsed.data, subject, topic, sourceText, count, userId, error: null };
 }
 
 export async function requireUserWhenConfigured(request: Request) {

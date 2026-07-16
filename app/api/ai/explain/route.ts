@@ -5,7 +5,8 @@ export async function POST(request: Request) {
   const { error } = await requireUserWhenConfigured(request);
   if (error) return error;
 
-  const { body, subject, topic } = await getAiContext(request);
+  const { body, subject, topic, error: contextError } = await getAiContext(request);
+  if (contextError) return contextError;
   const question = String(body?.question ?? "the question").trim();
   const selectedAnswer = String(body?.selectedAnswer ?? "your answer").trim();
   const correctAnswer = String(body?.correctAnswer ?? "the correct answer").trim();

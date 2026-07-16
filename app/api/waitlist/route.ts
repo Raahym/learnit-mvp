@@ -1,15 +1,21 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
+import { logServerError, parseJson, rateLimit, safeError } from "@/lib/api-safety";
 import { getSupabaseAdmin, hasSupabaseServerConfig } from "@/lib/supabase";
 
-export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
-  const email = String(body?.email ?? "").trim().toLowerCase();
-  const role = String(body?.role ?? "student").trim();
-  const examGoal = String(body?.examGoal ?? "").trim();
+const waitlistSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+  role: z.string().trim().min(1).max(80).default("student"),
+  examGoal: z.string().trim().max(160).optional().default("")
+});
 
-  if (!email || !email.includes("@")) {
-    return NextResponse.json({ error: "Valid email required." }, { status: 400 });
-  }
+export async function POST(request: Request) {
+  const limited = rateLimit(request, { key: "waitlist:post", limit: 10, windowMs: 60_000 });
+  if (limited) return limited;
+
+  const parsed = await parseJson(request, waitlistSchema);
+  if (parsed.error) return parsed.error;
+  const { email, role, examGoal } = parsed.data;
 
   if (!hasSupabaseServerConfig()) {
     return NextResponse.json({
@@ -25,7 +31,8 @@ export async function POST(request: Request) {
     .upsert({ email, role, exam_goal: examGoal }, { onConflict: "email" });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    logServerError("waitlist.upsert", error);
+    return safeError("Waitlist signup could not be saved.");
   }
 
   return NextResponse.json({ ok: true, mode: "supabase" });

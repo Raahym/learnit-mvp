@@ -5,7 +5,8 @@ export async function POST(request: Request) {
   const { error } = await requireUserWhenConfigured(request);
   if (error) return error;
 
-  const { body, subject, topic } = await getAiContext(request);
+  const { body, subject, topic, error: contextError } = await getAiContext(request);
+  if (contextError) return contextError;
   const examDate = body?.examDate ? String(body.examDate) : "upcoming exam";
   const weeklyHours = Number(body?.weeklyHours ?? 5);
   const blocks = Math.max(3, Math.min(8, weeklyHours));

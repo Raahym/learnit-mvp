@@ -1,6 +1,17 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
+import { logServerError, parseJson, rateLimit, safeError, shortText } from "@/lib/api-safety";
 import { getSupabaseAdmin, getUserIdFromRequest, hasSupabaseServerConfig } from "@/lib/supabase";
 import { updateSubjectReadiness } from "@/lib/study-progress";
+
+const quizAttemptSchema = z.object({
+  subject: shortText(120),
+  topic: shortText(160),
+  question: shortText(1000),
+  selectedAnswer: shortText(500),
+  correctAnswer: shortText(500),
+  confidence: z.coerce.number().int().min(1).max(5).default(3)
+});
 
 export async function GET(request: Request) {
   if (!hasSupabaseServerConfig()) {
@@ -28,22 +39,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
-  const subject = String(body?.subject ?? "").trim();
-  const topic = String(body?.topic ?? "").trim();
-  const question = String(body?.question ?? "").trim();
-  const selectedAnswer = String(body?.selectedAnswer ?? "").trim();
-  const correctAnswer = String(body?.correctAnswer ?? "").trim();
-  const confidence = Number(body?.confidence ?? 3);
+  const limited = rateLimit(request, { key: "quiz-attempt:post", limit: 120, windowMs: 60_000 });
+  if (limited) return limited;
+
+  const parsed = await parseJson(request, quizAttemptSchema);
+  if (parsed.error) return parsed.error;
+  const { subject, topic, question, selectedAnswer, correctAnswer, confidence } = parsed.data;
   const isCorrect = selectedAnswer === correctAnswer;
-
-  if (!subject || !topic || !question || !selectedAnswer || !correctAnswer) {
-    return NextResponse.json({ error: "Quiz attempt is incomplete." }, { status: 400 });
-  }
-
-  if (!Number.isFinite(confidence) || confidence < 1 || confidence > 5) {
-    return NextResponse.json({ error: "Confidence must be between 1 and 5." }, { status: 400 });
-  }
 
   if (!hasSupabaseServerConfig()) {
     return NextResponse.json({ ok: true, mode: "demo", isCorrect });
@@ -69,7 +71,8 @@ export async function POST(request: Request) {
     });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    logServerError("quiz-attempt.insert", error);
+    return safeError("Quiz attempt could not be saved.");
   }
 
   const readinessDelta = isCorrect ? 2 : -3;

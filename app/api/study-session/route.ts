@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
+import { logServerError, parseJson, rateLimit, safeError, shortText } from "@/lib/api-safety";
 import { getSupabaseAdmin, getUserIdFromRequest, hasSupabaseServerConfig } from "@/lib/supabase";
 import { updateSubjectReadiness } from "@/lib/study-progress";
+
+const studySessionSchema = z.object({
+  subject: shortText(120),
+  topic: shortText(160),
+  confidence: z.coerce.number().int().min(1).max(5).default(3),
+  minutes: z.coerce.number().int().min(1).max(720).default(25),
+  weakTopic: z.string().trim().max(160).optional().nullable()
+});
 
 export async function GET(request: Request) {
   if (!hasSupabaseServerConfig()) {
@@ -28,24 +38,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
-  const subject = String(body?.subject ?? "").trim();
-  const topic = String(body?.topic ?? "").trim();
-  const confidence = Number(body?.confidence ?? 3);
-  const minutes = Number(body?.minutes ?? 25);
-  const weakTopic = body?.weakTopic ? String(body.weakTopic).trim() : "";
+  const limited = rateLimit(request, { key: "study-session:post", limit: 60, windowMs: 60_000 });
+  if (limited) return limited;
 
-  if (!subject || !topic) {
-    return NextResponse.json({ error: "Subject and topic are required." }, { status: 400 });
-  }
-
-  if (!Number.isFinite(confidence) || confidence < 1 || confidence > 5) {
-    return NextResponse.json({ error: "Confidence must be between 1 and 5." }, { status: 400 });
-  }
-
-  if (!Number.isFinite(minutes) || minutes < 1) {
-    return NextResponse.json({ error: "Minutes must be positive." }, { status: 400 });
-  }
+  const parsed = await parseJson(request, studySessionSchema);
+  if (parsed.error) return parsed.error;
+  const { subject, topic, confidence, minutes } = parsed.data;
+  const weakTopic = parsed.data.weakTopic ?? "";
 
   const readinessGain = Math.min(8, Math.round(minutes / 12 + confidence));
 
@@ -69,7 +68,8 @@ export async function POST(request: Request) {
     .insert({ user_id: userId, subject, topic, confidence, minutes, readiness_gain: readinessGain });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    logServerError("study-session.insert", error);
+    return safeError("Study session could not be saved.");
   }
 
   const readiness = await updateSubjectReadiness(supabase!, userId, subject, readinessGain, weakTopic || topic);
